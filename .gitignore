@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*build*/
+*dist*/
+*.egg-info/
+venv/
+.venv/
+
+# Docker - Data volumes are managed by Docker, but ignore potential local data dirs if any
+# Add specific volume names if they were mapped to local folders instead of named volumes
+# e.g., zookeeper-data/, kafka1-data/, etc. - if they existed locally
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Log files
+*.log
+
+# Environment files
+.env
+
+# OS generated files
+.DS_Store
+Thumbs.db
