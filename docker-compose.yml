@@ -1,167 +1,182 @@
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.2.1
-    hostname: zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    volumes:
-      - zookeeper-data:/var/lib/zookeeper/data
-      - zookeeper-log:/var/lib/zookeeper/log
-    ports:
-      - "2181:2181"
-    restart: unless-stopped
 
-  kafka1:
-    image: confluentinc/cp-kafka:7.2.1
-    hostname: kafka1
-    depends_on: [zookeeper]
+  zookeeper:
+    image: bitnami/zookeeper:3.8
+    healthcheck:
+      test: ["CMD", "zkServer.sh", "status"]
+      interval: 5s
+      retries: 5
+      timeout: 5s
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: SASL_PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka1:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT
-      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: SASL_PLAINTEXT
-      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
-      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
-      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
-      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
-      KAFKA_SUPER_USERS: "User:admin"
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
-      KAFKA_MIN_INSYNC_REPLICAS: 2
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/jaas.conf"
+      ALLOW_ANONYMOUS_LOGIN: "yes"
     volumes:
-      - kafka1-data:/var/lib/kafka/data
-      - ./jaas.conf:/etc/kafka/jaas.conf:ro
-    ports:
-      - "9092:9092"
-    restart: unless-stopped
+      - zookeeper_data:/bitnami/zookeeper
+
+  # --- Three Kafka brokers with SCRAM and ACLs enabled ---
+  kafka1:
+    image: bitnami/kafka:3.5.1
+    hostname: kafka1
+    depends_on:
+      - zookeeper
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka1:9092,SASL_PLAINTEXT://kafka1:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
+      - KAFKA_CFG_SASL_ENABLED_MECHANISMS=SCRAM-SHA-256
+      - KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL=SCRAM-SHA-256
+      - KAFKA_CFG_SECURITY_INTER_BROKER_PROTOCOL=SASL_PLAINTEXT
+      - KAFKA_CFG_AUTHORIZER_CLASS_NAME=kafka.security.authorizer.AclAuthorizer
+      - KAFKA_CFG_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false
+      # Define two SCRAM users: admin (super-user) and client
+      - KAFKA_CLIENT_USERS=admin,client
+      - KAFKA_CLIENT_PASSWORDS=adminpwd,client-secret
+      - KAFKA_SUPER_USERS=User:admin
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFA_CREATE_TOPICS=my-topic:3:3
+    volumes:
+      - kafka1_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo>/dev/tcp/localhost/9093"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   kafka2:
-    image: confluentinc/cp-kafka:7.2.1
+    image: bitnami/kafka:3.5.1
     hostname: kafka2
-    depends_on: [zookeeper]
+    depends_on:
+      - zookeeper
     environment:
-      KAFKA_BROKER_ID: 2
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: SASL_PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka2:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT
-      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: SASL_PLAINTEXT
-      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
-      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
-      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
-      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
-      KAFKA_SUPER_USERS: "User:admin"
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
-      KAFKA_MIN_INSYNC_REPLICAS: 2
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/jaas.conf"
+      - KAFKA_BROKER_ID=2
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka2:9092,SASL_PLAINTEXT://kafka2:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
+      - KAFKA_CFG_SASL_ENABLED_MECHANISMS=SCRAM-SHA-256
+      - KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL=SCRAM-SHA-256
+      - KAFKA_CFG_SECURITY_INTER_BROKER_PROTOCOL=SASL_PLAINTEXT
+      - KAFKA_CFG_AUTHORIZER_CLASS_NAME=kafka.security.authorizer.AclAuthorizer
+      - KAFKA_CFG_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false
+      - KAFKA_CLIENT_USERS=admin,client
+      - KAFKA_CLIENT_PASSWORDS=adminpwd,client-secret
+      - KAFKA_SUPER_USERS=User:admin
     volumes:
-      - kafka2-data:/var/lib/kafka/data
-      - ./jaas.conf:/etc/kafka/jaas.conf:ro
-    ports:
-      - "9093:9092"
-    restart: unless-stopped
+      - kafka2_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo>/dev/tcp/localhost/9093"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   kafka3:
-    image: confluentinc/cp-kafka:7.2.1
+    image: bitnami/kafka:3.5.1
     hostname: kafka3
-    depends_on: [zookeeper]
+    depends_on:
+      - zookeeper
     environment:
-      KAFKA_BROKER_ID: 3
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: SASL_PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka3:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT
-      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: SASL_PLAINTEXT
-      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
-      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
-      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
-      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
-      KAFKA_SUPER_USERS: "User:admin"
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
-      KAFKA_MIN_INSYNC_REPLICAS: 2
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/jaas.conf"
+      - KAFKA_BROKER_ID=3
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka3:9092,SASL_PLAINTEXT://kafka3:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
+      - KAFKA_CFG_SASL_ENABLED_MECHANISMS=SCRAM-SHA-256
+      - KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL=SCRAM-SHA-256
+      - KAFKA_CFG_SECURITY_INTER_BROKER_PROTOCOL=SASL_PLAINTEXT
+      - KAFKA_CFG_AUTHORIZER_CLASS_NAME=kafka.security.authorizer.AclAuthorizer
+      - KAFKA_CFG_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false
+      - KAFKA_CLIENT_USERS=admin,client
+      - KAFKA_CLIENT_PASSWORDS=adminpwd,client-secret
+      - KAFKA_SUPER_USERS=User:admin
     volumes:
-      - kafka3-data:/var/lib/kafka/data
-      - ./jaas.conf:/etc/kafka/jaas.conf:ro
-    ports:
-      - "9094:9092"
-    restart: unless-stopped
+      - kafka3_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo>/dev/tcp/localhost/9093"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
+  # --- Logstash reading from Kafka ---
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.6.0
+    depends_on: [kafka1,kafka2,kafka3]
+    volumes:
+      - ./config/logstash/pipeline.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+
+  # --- AKHQ UI over SASL + basic-auth ---
   akhq:
     image: tchiotludo/akhq:latest
-    depends_on: [kafka1, kafka2, kafka3]
-    environment:
-      AKHQ_CONNECTIONS_default_BOOTSTRAP_SERVERS: "kafka1:9092,kafka2:9092,kafka3:9092"
-      AKHQ_CONNECTIONS_default_PROPERTIES_SECURITY_PROTOCOL: "SASL_PLAINTEXT"
-      AKHQ_CONNECTIONS_default_PROPERTIES_SASL_MECHANISM: "PLAIN"
-      AKHQ_CONNECTIONS_default_PROPERTIES_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="akhq" password="akhq-secret";'
-      AKHQ_SECURITY_PROVIDERS: "basic"
-      AKHQ_SECURITY_BASIC_USERS_0: "akhq:akhq-secret"
-      AKHQ_SECURITY_BASIC_USERS_0_GROUPS: "admin"
+    depends_on: [kafka1,kafka2,kafka3]
     ports:
       - "8080:8080"
-    restart: unless-stopped
-
-  logstash:
-    image: docker.elastic.co/logstash/logstash:7.16.2
-    depends_on: [kafka1, kafka2, kafka3]
     volumes:
-      - ./logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
-    restart: unless-stopped
-  # ——— Create the topic automatically ———
-  topic-init:
-    image: confluentinc/cp-kafka:7.2.1
-    depends_on: [kafka1]
-    entrypoint: >
-      bash -c "
-        for i in {1..10}; do
-          kafka-topics --bootstrap-server kafka1:9092 --list && break || sleep 5;
-        done;
-        kafka-topics --bootstrap-server kafka1:9092 \
-          --create --topic my-topic \
-          --partitions 1 --replication-factor 3 \
-          --config min.insync.replicas=2 \
-          --if-not-exists
-      "
-    restart: "no"
+      - ./config/akhq.yml:/app/application.yml:ro
 
+  # --- Python producer ---
   producer:
-    image: python:3.9-slim
-    depends_on: [topic-init]
-    working_dir: /app
-    volumes:
-      - ./python/producer.py:/app/producer.py:ro
-    entrypoint: >
-      bash -c "
-        pip install kafka-python &&
-        python producer.py
-      "
-
+      image: python:3.9-slim
+      depends_on:
+        kafka1:
+          condition: service_healthy
+        kafka2:
+          condition: service_healthy
+        kafka3:
+          condition: service_healthy
+      restart: unless-stopped                           # ← will restart on failure
+      volumes:
+        - ./producer:/app:ro
+      working_dir: /app
+      environment:
+        BOOTSTRAP_SERVERS: kafka1:9093,kafka2:9093,kafka3:9093
+        TOPIC: my-topic
+        SASL_USERNAME: client
+        SASL_PASSWORD: client-secret
+      entrypoint: >
+        bash -c "
+          echo '⏱ Waiting for Kafka to be available…' &&
+          # use bash /dev/tcp to poll port
+          until echo > /dev/tcp/kafka1/9093; do
+            sleep 2
+          done &&
+          echo '✅ Kafka is up, installing dependencies…' &&
+          pip install --no-cache-dir kafka-python &&
+          echo '🚀 Starting producer…' &&
+          python producer.py"
+      
+  # --- Python consumer ---
   consumer:
     image: python:3.9-slim
-    depends_on: [topic-init]
-    working_dir: /app
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+    restart: unless-stopped
     volumes:
-      - ./python/consumer.py:/app/consumer.py:ro
+      - ./consumer:/app:ro
+    working_dir: /app
+    environment:
+      BOOTSTRAP_SERVERS: kafka1:9093,kafka2:9093,kafka3:9093
+      TOPIC: my-topic
+      GROUP_ID: my-group
+      SASL_USERNAME: client
+      SASL_PASSWORD: client-secret
     entrypoint: >
       bash -c "
-        pip install kafka-python &&
+        echo '⏱ Waiting for Kafka to be available…' &&
+        until echo > /dev/tcp/kafka1/9093; do
+          sleep 2
+        done &&
+        echo '✅ Kafka is up, installing dependencies…' &&
+        pip install --no-cache-dir kafka-python &&
+        echo '🚀 Starting consumer…' &&
         python consumer.py
       "
-    restart: unless-stopped
-
 volumes:
-  zookeeper-data:
-  zookeeper-log:
-  kafka1-data:
-  kafka2-data:
-  kafka3-data:
+  zookeeper_data:
+  kafka1_data:
+  kafka2_data:
+  kafka3_data:
