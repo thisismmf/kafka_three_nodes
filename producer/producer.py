@@ -2,9 +2,9 @@ import os
 import time
 import json
 import logging
-from kafka import KafkaProducer, KafkaAdminClient
+from datetime import datetime
+from kafka import KafkaProducer, KafkaAdminClient, errors
 from kafka.admin import NewTopic
-from kafka.errors import KafkaError, NoBrokersAvailable, TopicAlreadyExistsError
 
 # Configure logging
 logging.basicConfig(
@@ -16,35 +16,46 @@ logger = logging.getLogger('kafka-producer')
 # Get configuration from environment variables
 bs = os.getenv("BOOTSTRAP_SERVERS").split(",")
 topic = os.getenv("TOPIC")
+sasl_username = os.getenv("SASL_USERNAME", "client")
+sasl_password = os.getenv("SASL_PASSWORD", "client-secret")
 
 # Try to ensure topic exists
-def ensure_topic_exists(topic_name, bootstrap_servers):
+def ensure_topic_exists(bootstrap_servers, topic_name):
     logger.info(f"Ensuring topic {topic_name} exists")
-    try:
-        admin_client = KafkaAdminClient(
-            bootstrap_servers=bootstrap_servers
-        )
-        
-        existing_topics = admin_client.list_topics()
-        if topic_name in existing_topics:
-            logger.info(f"Topic {topic_name} already exists")
-            return True
+    max_attempts = 5
+    attempt = 0
+    
+    while attempt < max_attempts:
+        try:
+            admin_client = KafkaAdminClient(
+                bootstrap_servers=bootstrap_servers,
+                security_protocol="SASL_PLAINTEXT",
+                sasl_mechanism="SCRAM-SHA-256",
+                sasl_plain_username=sasl_username,
+                sasl_plain_password=sasl_password
+            )
             
-        logger.info(f"Creating topic {topic_name}")
-        topic_config = NewTopic(
-            name=topic_name,
-            num_partitions=3,
-            replication_factor=3
-        )
-        admin_client.create_topics([topic_config])
-        logger.info(f"Topic {topic_name} created successfully")
-        return True
-    except TopicAlreadyExistsError:
-        logger.info(f"Topic {topic_name} already exists")
-        return True
-    except Exception as e:
-        logger.warning(f"Could not create/verify topic: {e}")
-        return False
+            topics = admin_client.list_topics()
+            if topic_name in topics:
+                logger.info(f"Topic {topic_name} exists")
+                return True
+            
+            logger.info(f"Creating topic {topic_name}")
+            topic = NewTopic(
+                name=topic_name,
+                num_partitions=3,
+                replication_factor=3
+            )
+            admin_client.create_topics([topic])
+            logger.info(f"Topic {topic_name} created successfully")
+            return True
+        except Exception as e:
+            attempt += 1
+            logger.warning(f"Error ensuring topic exists: {e}. Retry {attempt}/{max_attempts}")
+            time.sleep(5)
+    
+    logger.error(f"Failed to ensure topic exists after {max_attempts} attempts")
+    return False
 
 # Create producer with retry logic
 max_retries = 10
@@ -57,8 +68,8 @@ logger.info("Starting producer setup...")
 
 while attempt < max_retries:
     try:
-        # Try to connect to the admin client first
-        if not ensure_topic_exists(topic, bs):
+        # Ensure the topic exists
+        if not ensure_topic_exists(bs, topic):
             attempt += 1
             logger.warning(f"Topic verification failed. Retrying in {retry_delay}s (attempt {attempt}/{max_retries})")
             time.sleep(retry_delay)
@@ -66,15 +77,16 @@ while attempt < max_retries:
             
         producer = KafkaProducer(
             bootstrap_servers=bs,
-            value_serializer=lambda v: json.dumps(v).encode(),
-            acks='all',  # Wait for all replicas to acknowledge
-            retries=5,   # Retry sending message if it fails
-            retry_backoff_ms=500  # Time between retries
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="SCRAM-SHA-256",
+            sasl_plain_username=sasl_username,
+            sasl_plain_password=sasl_password
         )
         logger.info(f"Connected to Kafka brokers: {bs}")
         logger.info(f"Producing to topic: {topic}")
         break
-    except NoBrokersAvailable:
+    except errors.NoBrokersAvailable:
         attempt += 1
         logger.warning(f"Unable to connect to brokers. Retrying in {retry_delay}s (attempt {attempt}/{max_retries})")
         time.sleep(retry_delay)
@@ -109,7 +121,7 @@ while True:
         i += 1
         time.sleep(5)
         
-    except KafkaError as e:
+    except errors.KafkaError as e:
         logger.error(f"Error sending message: {e}")
         time.sleep(5)
     except Exception as e:

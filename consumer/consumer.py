@@ -13,29 +13,41 @@ logging.basicConfig(
 logger = logging.getLogger('kafka-consumer')
 
 # Get configuration from environment variables
-bs = os.getenv("BOOTSTRAP_SERVERS").split(",")
-topic = os.getenv("TOPIC")
-group = os.getenv("GROUP_ID")
+bs = os.getenv("BOOTSTRAP_SERVERS", "kafka1:9093,kafka2:9093,kafka3:9093").split(",")
+topic = os.getenv("TOPIC", "my-topic")
+group_id = os.getenv("GROUP_ID", "my-consumer-group")
+sasl_username = os.getenv("SASL_USERNAME", "client") 
+sasl_password = os.getenv("SASL_PASSWORD", "client-secret")
 
 # Check if topic exists
-def check_topic_exists(topic_name, bootstrap_servers, max_attempts=5):
-    for attempt in range(max_attempts):
+def check_topic_exists(topic_name, bootstrap_servers):
+    logger.info(f"Checking if topic {topic_name} exists")
+    max_attempts = 5
+    attempt = 0
+    
+    while attempt < max_attempts:
         try:
             admin_client = KafkaAdminClient(
-                bootstrap_servers=bootstrap_servers
+                bootstrap_servers=bootstrap_servers,
+                security_protocol="SASL_PLAINTEXT",
+                sasl_mechanism="SCRAM-SHA-256",
+                sasl_plain_username=sasl_username,
+                sasl_plain_password=sasl_password
             )
+            
             topics = admin_client.list_topics()
             if topic_name in topics:
                 logger.info(f"Topic {topic_name} exists")
                 return True
             else:
-                logger.warning(f"Topic {topic_name} does not exist yet. Attempt {attempt+1}/{max_attempts}")
-                time.sleep(5)
+                logger.warning(f"Topic {topic_name} does not exist")
+                return False
         except Exception as e:
-            logger.warning(f"Failed to check topic existence: {e}. Attempt {attempt+1}/{max_attempts}")
+            attempt += 1
+            logger.warning(f"Error checking topic existence: {e}. Retry {attempt}/{max_attempts}")
             time.sleep(5)
     
-    logger.warning(f"Topic {topic_name} could not be verified after {max_attempts} attempts")
+    logger.error(f"Failed to check if topic exists after {max_attempts} attempts")
     return False
 
 # Create consumer with retry logic
@@ -53,20 +65,29 @@ if not check_topic_exists(topic, bs):
 
 while attempt < max_retries:
     try:
+        # Check if the topic exists first
+        if not check_topic_exists(topic, bs):
+            logger.warning(f"Topic {topic} does not exist yet. Waiting...")
+            attempt += 1
+            time.sleep(retry_delay)
+            continue
+            
+        # Create the consumer
         consumer = KafkaConsumer(
             topic,
             bootstrap_servers=bs,
-            auto_offset_reset="earliest",
-            enable_auto_commit=True,
-            group_id=group,
-            value_deserializer=lambda m: json.loads(m.decode()),
-            heartbeat_interval_ms=3000,
-            session_timeout_ms=30000,
-            max_poll_interval_ms=300000
+            group_id=group_id,
+            auto_offset_reset='earliest',  # Start from the beginning if no offset is stored
+            enable_auto_commit=True,       # Automatically commit offsets
+            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="SCRAM-SHA-256",
+            sasl_plain_username=sasl_username,
+            sasl_plain_password=sasl_password
         )
+        
         logger.info(f"Connected to Kafka brokers: {bs}")
-        logger.info(f"Consuming from topic: {topic}")
-        logger.info(f"Consumer group: {group}")
+        logger.info(f"Consuming from topic: {topic} with group: {group_id}")
         break
     except NoBrokersAvailable:
         attempt += 1
