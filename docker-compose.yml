@@ -1,7 +1,11 @@
+version: '3.8'
+
 services:
 
   zookeeper:
-    image: bitnami/zookeeper:3.8
+    image: bitnami/zookeeper:${ZOOKEEPER_VERSION:-3.8}
+    hostname: zookeeper
+    container_name: zookeeper
     healthcheck:
       test: ["CMD", "zkServer.sh", "status"]
       interval: 5s
@@ -11,111 +15,149 @@ services:
       ALLOW_ANONYMOUS_LOGIN: "yes"
     volumes:
       - zookeeper_data:/bitnami/zookeeper
+    ports:
+      - "2181:2181"
+    networks:
+      - kafka-net
 
-  # --- Three Kafka brokers with SCRAM and ACLs enabled ---
+  # --- Three Kafka brokers ---
   kafka1:
-    image: bitnami/kafka:3.5.1
+    image: bitnami/kafka:${KAFKA_VERSION:-3.5.1}
     hostname: kafka1
+    container_name: kafka1
     depends_on:
       - zookeeper
     environment:
       - KAFKA_BROKER_ID=1
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka1:9092,SASL_PLAINTEXT://kafka1:9093
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
-      - KAFKA_CFG_SASL_ENABLED_MECHANISMS=SCRAM-SHA-256
-      - KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL=SCRAM-SHA-256
-      - KAFKA_CFG_SECURITY_INTER_BROKER_PROTOCOL=SASL_PLAINTEXT
-      - KAFKA_CFG_AUTHORIZER_CLASS_NAME=kafka.security.authorizer.AclAuthorizer
-      - KAFKA_CFG_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false
-      # Define two SCRAM users: admin (super-user) and client
-      - KAFKA_CLIENT_USERS=admin,client
-      - KAFKA_CLIENT_PASSWORDS=adminpwd,client-secret
-      - KAFKA_SUPER_USERS=User:admin
-      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=false
-      - KAFA_CREATE_TOPICS=my-topic:3:3
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka1:9092
+      - KAFKA_CFG_NUM_PARTITIONS=3
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=3
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
     volumes:
       - kafka1_data:/bitnami/kafka
+    ports:
+      - "9092:9092"
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo>/dev/tcp/localhost/9093"]
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 5s
       timeout: 3s
       retries: 12
+    networks:
+      - kafka-net
 
   kafka2:
-    image: bitnami/kafka:3.5.1
+    image: bitnami/kafka:${KAFKA_VERSION:-3.5.1}
     hostname: kafka2
+    container_name: kafka2
     depends_on:
       - zookeeper
     environment:
       - KAFKA_BROKER_ID=2
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka2:9092,SASL_PLAINTEXT://kafka2:9093
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
-      - KAFKA_CFG_SASL_ENABLED_MECHANISMS=SCRAM-SHA-256
-      - KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL=SCRAM-SHA-256
-      - KAFKA_CFG_SECURITY_INTER_BROKER_PROTOCOL=SASL_PLAINTEXT
-      - KAFKA_CFG_AUTHORIZER_CLASS_NAME=kafka.security.authorizer.AclAuthorizer
-      - KAFKA_CFG_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false
-      - KAFKA_CLIENT_USERS=admin,client
-      - KAFKA_CLIENT_PASSWORDS=adminpwd,client-secret
-      - KAFKA_SUPER_USERS=User:admin
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka2:9092
+      - KAFKA_CFG_NUM_PARTITIONS=3
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=3
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
     volumes:
       - kafka2_data:/bitnami/kafka
+    ports:
+      - "9093:9092"
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo>/dev/tcp/localhost/9093"]
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 5s
       timeout: 3s
       retries: 12
+    networks:
+      - kafka-net
 
   kafka3:
-    image: bitnami/kafka:3.5.1
+    image: bitnami/kafka:${KAFKA_VERSION:-3.5.1}
     hostname: kafka3
+    container_name: kafka3
     depends_on:
       - zookeeper
     environment:
       - KAFKA_BROKER_ID=3
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka3:9092,SASL_PLAINTEXT://kafka3:9093
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
-      - KAFKA_CFG_SASL_ENABLED_MECHANISMS=SCRAM-SHA-256
-      - KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL=SCRAM-SHA-256
-      - KAFKA_CFG_SECURITY_INTER_BROKER_PROTOCOL=SASL_PLAINTEXT
-      - KAFKA_CFG_AUTHORIZER_CLASS_NAME=kafka.security.authorizer.AclAuthorizer
-      - KAFKA_CFG_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false
-      - KAFKA_CLIENT_USERS=admin,client
-      - KAFKA_CLIENT_PASSWORDS=adminpwd,client-secret
-      - KAFKA_SUPER_USERS=User:admin
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka3:9092
+      - KAFKA_CFG_NUM_PARTITIONS=3
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=3
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
     volumes:
       - kafka3_data:/bitnami/kafka
+    ports:
+      - "9094:9092"
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo>/dev/tcp/localhost/9093"]
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 5s
       timeout: 3s
       retries: 12
+    networks:
+      - kafka-net
+
+  # --- Topic creation setup ---
+  kafka-init:
+    image: bitnami/kafka:${KAFKA_VERSION:-3.5.1}
+    container_name: kafka-init
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:9092
+    command: ["bash", "-c", "sleep 10 && kafka-topics.sh --bootstrap-server kafka1:9092 --create --if-not-exists --topic my-topic --partitions 3 --replication-factor 3"]
+    restart: on-failure
+    networks:
+      - kafka-net
 
   # --- Logstash reading from Kafka ---
   logstash:
     image: docker.elastic.co/logstash/logstash:8.6.0
-    depends_on: [kafka1,kafka2,kafka3]
+    container_name: logstash
+    depends_on: 
+      - kafka1
+      - kafka2
+      - kafka3
     volumes:
       - ./config/logstash/pipeline.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    ports:
+      - "5044:5044"
+    networks:
+      - kafka-net
 
-  # --- AKHQ UI over SASL + basic-auth ---
+  # --- AKHQ UI ---
   akhq:
     image: tchiotludo/akhq:latest
-    depends_on: [kafka1,kafka2,kafka3]
+    container_name: akhq
+    depends_on: 
+      - kafka1
+      - kafka2
+      - kafka3
     ports:
       - "8080:8080"
-    volumes:
-      - ./config/akhq.yml:/app/application.yml:ro
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            docker-kafka-server:
+              properties:
+                bootstrap.servers: "kafka1:9092,kafka2:9092,kafka3:9092"
+    networks:
+      - kafka-net
 
   # --- Python producer ---
   producer:
       image: python:3.9-slim
+      container_name: kafka-producer
       depends_on:
         kafka1:
           condition: service_healthy
@@ -123,30 +165,32 @@ services:
           condition: service_healthy
         kafka3:
           condition: service_healthy
-      restart: unless-stopped                           # ← will restart on failure
+      restart: unless-stopped
       volumes:
         - ./producer:/app:ro
       working_dir: /app
       environment:
-        BOOTSTRAP_SERVERS: kafka1:9093,kafka2:9093,kafka3:9093
-        TOPIC: my-topic
-        SASL_USERNAME: client
-        SASL_PASSWORD: client-secret
+        BOOTSTRAP_SERVERS: kafka1:9092,kafka2:9092,kafka3:9092
+        TOPIC: ${KAFKA_TOPIC:-my-topic}
       entrypoint: >
         bash -c "
           echo '⏱ Waiting for Kafka to be available…' &&
           # use bash /dev/tcp to poll port
-          until echo > /dev/tcp/kafka1/9093; do
+          until echo > /dev/tcp/kafka1/9092; do
             sleep 2
           done &&
+          sleep 10 &&
           echo '✅ Kafka is up, installing dependencies…' &&
           pip install --no-cache-dir kafka-python &&
           echo '🚀 Starting producer…' &&
           python producer.py"
+      networks:
+        - kafka-net
       
   # --- Python consumer ---
   consumer:
     image: python:3.9-slim
+    container_name: kafka-consumer
     depends_on:
       kafka1:
         condition: service_healthy
@@ -159,24 +203,30 @@ services:
       - ./consumer:/app:ro
     working_dir: /app
     environment:
-      BOOTSTRAP_SERVERS: kafka1:9093,kafka2:9093,kafka3:9093
-      TOPIC: my-topic
-      GROUP_ID: my-group
-      SASL_USERNAME: client
-      SASL_PASSWORD: client-secret
+      BOOTSTRAP_SERVERS: kafka1:9092,kafka2:9092,kafka3:9092
+      TOPIC: ${KAFKA_TOPIC:-my-topic}
+      GROUP_ID: ${CONSUMER_GROUP:-my-group}
     entrypoint: >
       bash -c "
         echo '⏱ Waiting for Kafka to be available…' &&
-        until echo > /dev/tcp/kafka1/9093; do
+        until echo > /dev/tcp/kafka1/9092; do
           sleep 2
         done &&
+        sleep 10 &&
         echo '✅ Kafka is up, installing dependencies…' &&
         pip install --no-cache-dir kafka-python &&
         echo '🚀 Starting consumer…' &&
         python consumer.py
       "
+    networks:
+      - kafka-net
+
 volumes:
   zookeeper_data:
   kafka1_data:
   kafka2_data:
   kafka3_data:
+
+networks:
+  kafka-net:
+    driver: bridge

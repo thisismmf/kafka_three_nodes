@@ -6,11 +6,11 @@ akhq:
   security:
     basic-auth:
       - username: admin
-        password: 7b18601f5caaa6dbbc7ad058ac54a25d30e7a508ce814c41f44ea5cabf9b3181
+        password: 7b18601f5caaa6dbbc7ad058ac54a25d30e7a508ce814c41f44ea5cabf9b3181  # Password: 'akhq'
         groups:
           - admin
   connections:
-    local:
+    local-cluster:
       properties:
         bootstrap.servers: "kafka1:9093,kafka2:9093,kafka3:9093"
         security.protocol: SASL_PLAINTEXT
@@ -19,3 +19,7 @@ akhq:
           org.apache.kafka.common.security.scram.ScramLoginModule required
             username="admin"
             password="adminpwd";
+      connect:
+        enabled: false
+      schema-registry:
+        enabled: false
